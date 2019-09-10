@@ -4,7 +4,7 @@ import os
 import json
 
 #　timestamp & value　保存到csv
-def single_sequence(data,cols,save_path):
+def single_sequence(data,cols,save_path,ip='noip'):
     '''
     :param data:从infludb导出的原始数据表
     :param cols:从表里要单独提出来的所有列名
@@ -19,7 +19,7 @@ def single_sequence(data,cols,save_path):
             continue
         data_col.dropna(inplace=True)
         data_col = data_col.groupby('timestamp').mean().reset_index()
-        data_col.to_csv(save_path+'2_'+str(i+1)+cols[i]+'.csv',index=0)
+        data_col.to_csv(save_path+ip+'_'+'2_'+str(i+1)+cols[i]+'.csv',index=0)
 
 
 def write_json(path):
@@ -45,9 +45,10 @@ def write_json(path):
 def main():
     # adjusted paremeters
     data_csv_path = '../data/realBKmonitor/1122bkmonitor_selfscript_es_nodes_3.csv'
-    select_ip = False
-    nodes_host_ip = '10.33.208.35'
-    single_data_path = '../data/es_node3_IP/'
+    select_ip = True
+    nodes_host_ip = ['10.33.208.35', '10.33.208.52', '10.33.208.43', '10.33.208.37', '10.33.208.36', '10.33.208.44',
+                     '10.33.208.53', '10.33.208.51', '10.33.208.45']
+    single_data_path = '../data/es_nodes3_9ips/'
     cols = ['nodes_fs_total_available_in_b',
             'nodes_jvm_mem_heap_used_per',
             'nodes_os_cpu_load_average_1m',
@@ -60,15 +61,20 @@ def main():
     data.rename(columns={'time':'timestamp'},inplace=True)
     data['timestamp'] = pd.to_datetime(data['timestamp'], format='%Y-%m-%dT%H:%M:%SZ')
 
-    #　nodes_host = 10.33.208.66的
-    if select_ip:
-        data = data[data['nodes_host']== nodes_host_ip]
-
-    #　save data csv and json file for detect in run.py
     if not os.path.exists(single_data_path):
         os.makedirs(single_data_path)
-    single_sequence(data,cols,single_data_path)
+    # 　nodes_host 筛选
+    if select_ip:
+        for nodes_host in nodes_host_ip:
+            data_ip = data[data['nodes_host'] == nodes_host]
+            single_sequence(data_ip, cols, single_data_path, nodes_host)
+    else:
+        single_sequence(data, cols, single_data_path)
+
+    # 写入到windows_combined里
     write_json(single_data_path)
+
+
 
 
 if __name__ == '__main__':

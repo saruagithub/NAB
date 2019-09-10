@@ -4,7 +4,9 @@ import time
 import os
 from sklearn.model_selection import train_test_split,cross_val_score
 from sklearn.svm import SVC
-from sklearn.metrics  import classification_report,confusion_matrix
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics  import classification_report,confusion_matrix,roc_auc_score
+from matplotlib import pyplot as plt
 
 
 def concat_all_anomaly_csv(path):
@@ -39,12 +41,12 @@ def log_label(row,events):
     '''
     # 当前时间后续ｎ分钟内出现日志异常即label=1
     interval = events[u'首次发生时间'] - row['timestamp']
-    # 时间在之后10min内出现日志异常
+    # 时间在之后30min内出现日志异常
     interval =  interval[interval>0]
     interval.reset_index(drop=True,inplace=True)
     row_notime = row.drop('timestamp')
     # anomaly_score > 0.5 && log anomaly time is later than anomaly_score time in 30min
-    if row_notime[row_notime>0.5].shape[0] == 0:
+    if row_notime[row_notime>0.5].shape[0] < 1:
         return 0
     if interval[interval.shape[0]-1] > 1800:
         return 0
@@ -60,7 +62,7 @@ def construct_data(detected_path,events_path):
     '''
     detected_anomalys = concat_all_anomaly_csv(detected_path)
     # no ave time数据,对anomaly_score做mean
-    detected_anomalys = detected_anomalys.groupby('timestamp').mean().reset_index()
+    # detected_anomalys = detected_anomalys.groupby('timestamp').mean().reset_index()
     detected_anomalys['timestamp'] = detected_anomalys['timestamp'].apply(lambda x: time.mktime(time.strptime(x, '%Y-%m-%d %H:%M:%S')))
     events = pd.read_excel(events_path)
     events[u'首次发生时间'] = events[u'首次发生时间'].apply(lambda x: time.mktime(time.strptime(x, '%Y-%m-%d %H:%M:%S')))
@@ -71,25 +73,31 @@ def construct_data(detected_path,events_path):
 
 
 def main():
-    detected_path = '../results/myres/numenta/es_node3_IP/'
-    #events_path = 'events_20181122084402.xlsx'
+    detected_path = '../results/myres/numenta/es_nodes3_9ips/'
     events_path = 'merge_events.xlsx'
     anomalys = construct_data(detected_path,events_path)
 
+    anomaly_label = anomalys.pop('label')
+    X_train,X_test,y_train,y_test = train_test_split(anomalys,anomaly_label,test_size=0.2)
+    '''
     # SVM training
     print "SVM training!"
-    anomaly_label = anomalys.pop('label')
-    X_train,X_test,y_train,y_test = train_test_split(anomalys,anomaly_label,test_size=0.2,random_state=8)
-    svclassifier = SVC(kernel='rbf',gamma=0.1)
-    #svclassifier = SVC(kernel='rbf')
+    svclassifier = SVC(kernel='rbf')
     svclassifier.fit(X_train,y_train)
     #scores = cross_val_score(svclassifier,anomalys,anomaly_label,cv=5)
 
     y_pred = svclassifier.predict(X_test)
     print "混淆矩阵:\n",confusion_matrix(y_test,y_pred)
     print "综合报告:\n",classification_report(y_test,y_pred)
-    #print "Cross vali scores:",scores
-
+    '''
+    lr = LogisticRegression()
+    lr.fit(X_train,y_train)
+    y_train_pre = lr.predict_proba(X_train)[:,1]
+    y_test_pre = lr.predict_proba(X_test)[:,1]
+    auc_train = roc_auc_score(y_train,y_train_pre)
+    auc_test = roc_auc_score(y_test,y_test_pre)
+    print y_test_pre
+    print auc_train,auc_test
 
 
 

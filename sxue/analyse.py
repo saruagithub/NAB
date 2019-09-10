@@ -5,6 +5,7 @@ import datetime
 from matplotlib import pyplot as plt
 import xlrd
 import os
+from predict import concat_all_anomaly_csv
 
 
 def event_preprocess(events_file='events_20181122084402.xlsx'):
@@ -61,11 +62,36 @@ def contrast(res_path):
     anomalys = pd.concat([anomalys,anomalys['timestamp'].apply(lambda x:find_next_log(x))],axis=1)
     anomalys.to_csv(res_path.rstrip('.csv')+'_log.csv')
 
-def main():
+def one_anomaly_plot():
+    plt.figure(1,figsize=(20,8))
     #parameters
-    res_csv_path = '../results/myres/numenta/es_node3_noIP_noAveTime/numenta_2_3nodes_os_cpu_load_average_1m.csv'
-    contrast(res_csv_path)
-    plot_score(res_csv_path)
+    #res_csv_path = '../results/myres/numenta/es_nodes3_66_AveTime/numenta__2_3nodes_os_cpu_load_average_1m.csv'
+    #contrast(res_csv_path)
+    #plot_score(res_csv_path)
+    path = '../results/myres/numenta/es_nodes3_9ips/'
+    for item in os.listdir(path):
+        plot_score(path+item)
+
+
+
+def all_anomalys_plot():
+    plt.figure(1,figsize=(20,8))
+    detected_path = '../results/myres/numenta/es_nodes3_9ips/'
+    events_path = 'merge_events.xlsx'
+    anomalys = concat_all_anomaly_csv(detected_path)
+    anomalys['max_anomaly_score'] = anomalys.iloc[:,1:anomalys.shape[1]-1].max(axis=1)
+    anomalys['timestamp'] = pd.to_datetime(anomalys['timestamp'], format='%Y-%m-%d %H:%M:%S')
+    plt.plot(anomalys['timestamp'],anomalys['max_anomaly_score'])
+
+    events = pd.read_excel(events_path)
+    events[u'首次发生时间'] = pd.to_datetime(events[u'首次发生时间'], format='%Y-%m-%d %H:%M:%S')
+    events['priority'] = events[u'优先级'].map({u'高': 3, u'中': 2, u'低': 1})
+    plt.plot(events[u'首次发生时间'],events['priority'])
+    plt.grid(True)
+    plt.show()
+
+def main():
+    all_anomalys_plot()
 
 if __name__ == '__main__':
     main()
