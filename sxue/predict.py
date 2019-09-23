@@ -1,8 +1,9 @@
 #encoding=utf-8
 import pandas as pd
+import numpy as np
 import time
 import os
-from sklearn.model_selection import train_test_split,cross_val_score
+from sklearn.model_selection import train_test_split,cross_validate,KFold
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics  import classification_report,confusion_matrix,roc_auc_score
@@ -48,7 +49,7 @@ def log_label(row,events):
     # anomaly_score > 0.5 && log anomaly time is later than anomaly_score time in 30min
     if row_notime[row_notime>0.5].shape[0] < 1:
         return 0
-    if interval[interval.shape[0]-1] > 1800:
+    if interval[interval.shape[0]-1] > 3600:#30min-1800
         return 0
     else:
         return 1
@@ -76,28 +77,27 @@ def main():
     detected_path = '../results/myres/numenta/es_nodes3_9ips/'
     events_path = 'merge_events.xlsx'
     anomalys = construct_data(detected_path,events_path)
+    anomalys_label = anomalys.pop('label')
 
-    anomaly_label = anomalys.pop('label')
-    X_train,X_test,y_train,y_test = train_test_split(anomalys,anomaly_label,test_size=0.2)
-    '''
-    # SVM training
-    print "SVM training!"
-    svclassifier = SVC(kernel='rbf')
-    svclassifier.fit(X_train,y_train)
-    #scores = cross_val_score(svclassifier,anomalys,anomaly_label,cv=5)
+    X_train,X_test,Y_train,Y_test = train_test_split(anomalys,anomalys_label,test_size=0.3)
+    # KF = KFold(n_splits=2)
+    # for train_index,test_index in KF.split(anomalys):
+    #     X_train,X_test = anomalys.loc[train_index],anomalys.loc[test_index]
+    #     Y_train,Y_test = anomalys_label.loc[train_index],anomalys_label.loc[test_index]
 
-    y_pred = svclassifier.predict(X_test)
-    print "混淆矩阵:\n",confusion_matrix(y_test,y_pred)
-    print "综合报告:\n",classification_report(y_test,y_pred)
-    '''
+    # lr model
     lr = LogisticRegression()
-    lr.fit(X_train,y_train)
+    lr.fit(X_train,Y_train)
     y_train_pre = lr.predict_proba(X_train)[:,1]
     y_test_pre = lr.predict_proba(X_test)[:,1]
-    auc_train = roc_auc_score(y_train,y_train_pre)
-    auc_test = roc_auc_score(y_test,y_test_pre)
-    print y_test_pre
-    print auc_train,auc_test
+    y_test_pre_01 = lr.predict(X_test)
+
+    auc_train = roc_auc_score(Y_train,y_train_pre)
+    auc_test = roc_auc_score(Y_test,y_test_pre)
+    print "y test prediction:\n",y_test_pre
+    print "train auc,test auc:\n",auc_train,auc_test
+    print "混淆矩阵:\n",confusion_matrix(Y_test,y_test_pre_01)
+    print "综合报告:\n",classification_report(Y_test,y_test_pre_01)
 
 
 

@@ -12,14 +12,24 @@ def event_preprocess(events_file='events_20181122084402.xlsx'):
     events = pd.read_excel(events_file)
     return events
 
+def plot_value_score(res_path):
+    plt.figure(1, figsize=(20, 8))
+    res = pd.read_csv(res_path)
+    res['timestamp'] = pd.to_datetime(res['timestamp'],format='%Y-%m-%d %H:%M:%S')
+    res.set_index(['timestamp'],inplace=True)
+    res_temp = res[res['anomaly_score']>0.5]
+    plt.scatter(x=res_temp.index,y=res_temp['anomaly_score'],c='red')
+    res['value'].plot()
+    plt.show()
 
-def plot_score(res_path):
+
+def plot_score_events(res_path):
     '''
     :param res_path: 经过检测的单序列数据路径
     :return: 异常优先级,anomaly_score画在一张图上进行对比
     '''
     events = event_preprocess()
-    #events = events[events['IP']=='10.33.208.66']
+    events = events[events['IP']=='10.33.208.66']
     events[u'首次发生时间'] = pd.to_datetime(events[u'首次发生时间'],format='%Y-%m-%d %H:%M:%S')
     events = events[events[u'首次发生时间']>datetime.datetime(2018,11,8,0,0,0)]
     events['priority'] = events[u'优先级'].map({u'高':3,u'中':2,u'低':1})
@@ -68,9 +78,10 @@ def one_anomaly_plot():
     #res_csv_path = '../results/myres/numenta/es_nodes3_66_AveTime/numenta__2_3nodes_os_cpu_load_average_1m.csv'
     #contrast(res_csv_path)
     #plot_score(res_csv_path)
-    path = '../results/myres/numenta/es_nodes3_9ips/'
-    for item in os.listdir(path):
-        plot_score(path+item)
+    path = '../results/myres/numenta/es_nodes3_66_AveTime/numenta__2_3nodes_os_cpu_load_average_1m.csv'
+    plot_score_events(path)
+    #for item in os.listdir(path):
+    #    plot_score(path+item)
 
 
 
@@ -91,7 +102,7 @@ def all_anomalys_plot():
     plt.show()
 
 def main():
-    all_anomalys_plot()
+    plot_value_score('../results/myres/numenta/es_nodes3_66_AveTime/numenta__2_3nodes_os_cpu_load_average_1m.csv')
 
 if __name__ == '__main__':
     main()
