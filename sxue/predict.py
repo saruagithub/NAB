@@ -80,10 +80,6 @@ def main():
     anomalys_label = anomalys.pop('label')
 
     X_train,X_test,Y_train,Y_test = train_test_split(anomalys,anomalys_label,test_size=0.3)
-    # KF = KFold(n_splits=2)
-    # for train_index,test_index in KF.split(anomalys):
-    #     X_train,X_test = anomalys.loc[train_index],anomalys.loc[test_index]
-    #     Y_train,Y_test = anomalys_label.loc[train_index],anomalys_label.loc[test_index]
 
     # lr model
     lr = LogisticRegression()

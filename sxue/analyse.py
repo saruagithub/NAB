@@ -5,19 +5,24 @@ import datetime
 from matplotlib import pyplot as plt
 import xlrd
 import os
-from predict import concat_all_anomaly_csv
+import predict
 
+ANOMALY_SCORE = 0.5
 
 def event_preprocess(events_file='events_20181122084402.xlsx'):
     events = pd.read_excel(events_file)
     return events
 
 def plot_value_score(res_path):
+    '''
+    :param res_path: 经过检测的单序列数据路径
+    :return: 画图异常分数大于0.5的异常值点
+    '''
     plt.figure(1, figsize=(20, 8))
     res = pd.read_csv(res_path)
     res['timestamp'] = pd.to_datetime(res['timestamp'],format='%Y-%m-%d %H:%M:%S')
     res.set_index(['timestamp'],inplace=True)
-    res_temp = res[res['anomaly_score']>0.5]
+    res_temp = res[res['anomaly_score']>ANOMALY_SCORE]
     plt.scatter(x=res_temp.index,y=res_temp['anomaly_score'],c='red')
     res['value'].plot()
     plt.show()
@@ -26,8 +31,9 @@ def plot_value_score(res_path):
 def plot_score_events(res_path):
     '''
     :param res_path: 经过检测的单序列数据路径
-    :return: 异常优先级,anomaly_score画在一张图上进行对比
+    :return: 异常优先级　& anomaly_score画在一张图上进行对比
     '''
+    plt.figure(1, figsize=(20, 8))
     events = event_preprocess()
     events = events[events['IP']=='10.33.208.66']
     events[u'首次发生时间'] = pd.to_datetime(events[u'首次发生时间'],format='%Y-%m-%d %H:%M:%S')
@@ -68,33 +74,26 @@ def contrast(res_path):
     res = pd.read_csv(res_path)
     res = res.groupby('timestamp').mean().reset_index()
     res['timestamp'] = pd.to_datetime(res['timestamp'])
-    anomalys = res[res['anomaly_score']>0.5]
+    anomalys = res[res['anomaly_score']>ANOMALY_SCORE]
     anomalys = pd.concat([anomalys,anomalys['timestamp'].apply(lambda x:find_next_log(x))],axis=1)
     anomalys.to_csv(res_path.rstrip('.csv')+'_log.csv')
 
-def one_anomaly_plot():
+
+def all_anomalys_plot(detected_path):
+    '''
+    :param detected_path: 经过检测的结果文件夹，如'../results/myres/numenta/es_nodes3_66/'
+    :return:score超过ANOMALY_SCORE的个数　与　events事件
+    '''
     plt.figure(1,figsize=(20,8))
-    #parameters
-    #res_csv_path = '../results/myres/numenta/es_nodes3_66_AveTime/numenta__2_3nodes_os_cpu_load_average_1m.csv'
-    #contrast(res_csv_path)
-    #plot_score(res_csv_path)
-    path = '../results/myres/numenta/es_nodes3_66_AveTime/numenta__2_3nodes_os_cpu_load_average_1m.csv'
-    plot_score_events(path)
-    #for item in os.listdir(path):
-    #    plot_score(path+item)
-
-
-
-def all_anomalys_plot():
-    plt.figure(1,figsize=(20,8))
-    detected_path = '../results/myres/numenta/es_nodes3_9ips/'
-    events_path = 'merge_events.xlsx'
-    anomalys = concat_all_anomaly_csv(detected_path)
-    anomalys['max_anomaly_score'] = anomalys.iloc[:,1:anomalys.shape[1]-1].max(axis=1)
+    anomalys = predict.concat_all_anomaly_csv(detected_path)
+    anomalys['label'] = anomalys.apply(lambda row:sum(row>ANOMALY_SCORE)-1,axis=1) #score超过ANOMALY_SCORE的个数
+    #anomalys['max_anomaly_score'] = anomalys.iloc[:,1:anomalys.shape[1]-1].max(axis=1) #画一行里的最大值
     anomalys['timestamp'] = pd.to_datetime(anomalys['timestamp'], format='%Y-%m-%d %H:%M:%S')
-    plt.plot(anomalys['timestamp'],anomalys['max_anomaly_score'])
+    plt.plot(anomalys['timestamp'],anomalys['label'])
 
+    events_path = 'merge_events.xlsx'
     events = pd.read_excel(events_path)
+    events = events[events['IP'] == '10.33.208.66']
     events[u'首次发生时间'] = pd.to_datetime(events[u'首次发生时间'], format='%Y-%m-%d %H:%M:%S')
     events['priority'] = events[u'优先级'].map({u'高': 3, u'中': 2, u'低': 1})
     plt.plot(events[u'首次发生时间'],events['priority'])
@@ -102,7 +101,14 @@ def all_anomalys_plot():
     plt.show()
 
 def main():
-    plot_value_score('../results/myres/numenta/es_nodes3_66_AveTime/numenta__2_3nodes_os_cpu_load_average_1m.csv')
+    #plot_value_score('../results/myres/numenta/es_nodes3_66/numenta__2_3nodes_os_cpu_load_average_1m.csv')
+    #one_anomaly_plot()
+    all_anomalys_plot('../results/myres/numenta/es_nodes3_66/')  #detected_path = '../results/myres/numenta/es_nodes3_9ips/'
+    plot_score_events('../results/myres/numenta/es_nodes3_66/numenta_10.33.208.66_2_1nodes_os_cpu_load_average_1m.csv')
+    plot_score_events('../results/myres/numenta/es_nodes3_66/numenta_10.33.208.66_2_2nodes_os_cpu_percent.csv')
+    plot_score_events('../results/myres/numenta/es_nodes3_66/numenta_10.33.208.66_2_3nodes_process_cpu_percent.csv')
+
+
 
 if __name__ == '__main__':
     main()
