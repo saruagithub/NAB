@@ -1,15 +1,15 @@
-#encoding=utf-8
+#-*- coding:utf-8 -*-
 import pandas as pd
 import numpy as np
 import datetime
 from matplotlib import pyplot as plt
 import xlrd
-import os
+import re
 import predict
 
 ANOMALY_SCORE = 0.5
 
-def event_preprocess(events_file='events_20181122084402.xlsx',es_ip='10.33.208.66'):
+def event_preprocess(events_file='events_20181122084402.xlsx', es_ip='10.33.208.66'):
     events = pd.read_excel(events_file)
     events['priority'] = events[u'优先级'].map({u'高': 3, u'中': 2, u'低': 1})
     events[u'首次发生时间'] = pd.to_datetime(events[u'首次发生时间'], format='%Y-%m-%d %H:%M:%S')
@@ -17,52 +17,68 @@ def event_preprocess(events_file='events_20181122084402.xlsx',es_ip='10.33.208.6
     events = events[events[u'首次发生时间'] > datetime.datetime(2018, 11, 8, 0, 0, 0)]
     return events
 
-def plot_value(res_path):
+def res_preprocess(res_path):
+    res = pd.read_csv(res_path)
+    res['timestamp'] = pd.to_datetime(res['timestamp'], format='%Y-%m-%d %H:%M:%S')
+    res_ip = re.findall('(?<![\.\d])(?:\d{1,3}\.){3}\d{1,3}(?![\.\d])',res_path,re.S)
+    return res,res_ip[0]
+
+def plot_value_perweek(res):
+    pass
+    # plt.figure(1, figsize=(20, 8))
+    # res['week'] = res['timestamp'].isocalendar()[1]
+    # plt.plot(res['week'], res['value'], label='time series value per week')
+    # plt.legend(loc='upper right')
+    # plt.show()
+
+def plot_value_recentday(res):
+    pass
+
+def plot_value(res):
     '''
     :param res_path: csv路径
     :return: 画出原始数据的value值变化
     '''
     plt.figure(1, figsize=(20, 8))
-    res = pd.read_csv(res_path)
-    res['timestamp'] = pd.to_datetime(res['timestamp'],format='%Y-%m-%d %H:%M:%S')
-    res.set_index(['timestamp'],inplace=True)
-    res['value'].plot(label='time series value')
+    plt.plot(res['timestamp'], res['value'], label='time series value')
     plt.legend(loc='upper right')
     plt.show()
 
-def plot_value_score(res_path):
+def plot_value_score(res):
     '''
     :param res_path: 经过检测的单序列数据路径
     :return: 画图异常分数大于0.5的异常值点
     '''
     plt.figure(1, figsize=(20, 8))
-    res = pd.read_csv(res_path)
-    res['timestamp'] = pd.to_datetime(res['timestamp'],format='%Y-%m-%d %H:%M:%S')
-    res.set_index(['timestamp'],inplace=True)
-    res['value'].plot(label='time series value')
-
+    plt.plot(res['timestamp'], res['value'], label='time series value')
     res_temp = res[res['anomaly_score']>ANOMALY_SCORE]
-    #plt.scatter(x=res_temp.index,y=res_temp['anomaly_score'],c='red',label='anomaly_score > 0.5 in time series')
-    plt.scatter(x=res_temp.index, y=res_temp['value'], c='red', label='value whose anomaly_score > 0.5 in time series')
-
+    plt.scatter(x=res_temp['timestamp'], y=res_temp['value'], c='red', label='value whose anomaly_score > 0.5 in time series')
     plt.legend(loc='upper right')
     plt.show()
 
-def plot_value_events(res_path):
+def plot_value_score_events(res,res_ip):
+    '''
+    :param res: 经过检测的单序列数据路径
+    :return: 画图时序值,　events点,　异常分数>Thld的点
+    '''
     plt.figure(1, figsize=(20, 8))
-    events = event_preprocess(events_file='merge_events.xlsx')
-    plt.scatter(x=events[u'首次发生时间'],y=events['priority'],color='blue',label='true event priority')
+    events = event_preprocess(events_file='merge_events.xlsx',es_ip=res_ip)
+    plt.plot(res['timestamp'], res['value'], label='time series value')
+    plt.scatter(x=events[u'首次发生时间'],
+                y=[res['value'].mean() for x in range(events.shape[0])],
+                color='red',
+                label='true event priority') #!!! 事件优先级 priority
 
-    res = pd.read_csv(res_path)
-    res['timestamp'] = pd.to_datetime(res['timestamp'], format='%Y-%m-%d %H:%M:%S')
-    res_temp =  res[res['anomaly_score']>ANOMALY_SCORE]
-    plt.plot(res_temp['timestamp'],res_temp['value'],color='red',label='value whose anomaly_score > 0.5 in time series')
-
+    res_temp = res[res['anomaly_score'] > ANOMALY_SCORE]
+    plt.scatter(x=res_temp['timestamp'],
+                y=res_temp['value'],
+                c='purple',
+                label='value whose anomaly_score > 0.5 in time series')
     plt.legend(loc='upper right')
     plt.grid(True)
     plt.show()
 
-def plot_score_events(res_path):
+def plot_score_events(res):
     '''
     :param res_path: 经过检测的单序列数据路径
     :return: 异常优先级　& anomaly_score画在一张图上进行对比
@@ -70,11 +86,7 @@ def plot_score_events(res_path):
     plt.figure(1, figsize=(20, 8))
     events = event_preprocess(events_file='merge_events.xlsx')
     plt.scatter(x=events[u'首次发生时间'],y=events['priority'],label='true event priority')
-
-    res_one = pd.read_csv(res_path)
-    res_one['timestamp'] = pd.to_datetime(res_one['timestamp'], format='%Y-%m-%d %H:%M:%S')
-    plt.plot(res_one['timestamp'],res_one['anomaly_score'],color='green',label='anomaly_score in time series')
-
+    plt.plot(res['timestamp'],res['anomaly_score'],color='red',label='anomaly_score in time series')
     plt.legend(loc='upper right')
     plt.grid(True)
     plt.show()
@@ -130,12 +142,12 @@ def contrast(res_path):
 
 
 def main():
-    plot_value('../results/myres/numenta/es_nodes3_66/numenta_10.33.208.66_2_1nodes_os_cpu_load_average_1m.csv')
-    plot_value_score('../results/myres/numenta/es_nodes3_66/numenta_10.33.208.66_2_1nodes_os_cpu_load_average_1m.csv')
-    plot_value_events('../results/myres/numenta/es_nodes3_66/numenta_10.33.208.66_2_1nodes_os_cpu_load_average_1m.csv')
-    plot_score_events('../results/myres/numenta/es_nodes3_66/numenta_10.33.208.66_2_1nodes_os_cpu_load_average_1m.csv')
-    #all_anomalys_plot('../results/myres/bayesChangePt/es_nodes3_66/')  #detected_path = '../results/myres/numenta/es_nodes3_9ips/'
-
+    path = '../results/myres/bayesChangePt/es_nodes3_52/bayesChangePt_10.33.208.52_2_2nodes_jvm_mem_heap_used_per.csv'
+    res,res_ip = res_preprocess(path)
+    plot_value_score_events(res,res_ip)
+    #plot_value_perweek(res)
+    #plot_value_score(res)
+    #plot_score_events(res)
 
 
 if __name__ == '__main__':

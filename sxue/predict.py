@@ -1,26 +1,35 @@
-#encoding=utf-8
+#-*- coding:utf-8 -*-
 import pandas as pd
 import numpy as np
 import time
 import os
-from sklearn.model_selection import train_test_split,cross_validate,KFold
-from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split,cross_validate,StratifiedKFold
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics  import classification_report,confusion_matrix,roc_auc_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn import metrics
 from matplotlib import pyplot as plt
+import evaluate
 
+def res_paths(path):
+    pathlist = []
+    for item in os.listdir(path):
+        pathlist.append(path+item)
+    return pathlist
 
-def concat_all_anomaly_csv(path):
+def concat_all_anomaly_csv(pathlist):
     '''
     :param path: 将path下的所有异常csv结合到一起,timestamp保留一个
     :return: timestamp,各序列异常分数的csv
     '''
     # 经过HTM预测得到的所有异常csv，保留timestamp,anomaly_score并左右拼接起来
     res_datas = []
-    for item in os.listdir(path):
-        data = pd.read_csv(path+item)
-        data.drop(['value','raw_score','label'],axis=1 ,inplace=True)
-        data = data.rename(columns = {'anomaly_score':'anomalyscore_'+item.rstrip('.csv')})
+    for path in pathlist:
+        data = pd.read_csv(path)
+        if 'numenta' in path:
+            data.drop(['value','raw_score','label'],axis=1 ,inplace=True)
+        else:
+            data.drop(['value','label'],axis=1 ,inplace=True)
+        data = data.rename(columns = {'anomaly_score':'anomalyscore_'+path.split('/')[5].rstrip('.csv')})
         print data.columns
         data = data.set_index(['timestamp'])
         res_datas.append(data)
@@ -45,56 +54,129 @@ def log_label(row,events):
     # 时间在之后30min内出现日志异常
     interval =  interval[interval>0]
     interval.reset_index(drop=True,inplace=True)
-    row_notime = row.drop('timestamp')
+    # row_notime = row.drop('timestamp')
     # anomaly_score > 0.5 && log anomaly time is later than anomaly_score time in 30min
-    if row_notime[row_notime>0.5].shape[0] < 1:
+    #if row_notime[row_notime>0.5].shape[0] < 1:
+    #    return 0
+    if np.isnan(interval.min()):
+        #print 'interval.min: ',interval.min()
         return 0
-    if interval[interval.shape[0]-1] > 3600:#30min-1800
+    elif interval.min() > 1800:#30min-1800
         return 0
     else:
         return 1
+    # interval = np.abs(events[u'首次发生时间'] - row['timestamp'])
+    # index = np.argmin(interval)
+    # if interval[index] < 600:
+    #     return 1
+    # else:
+    #     return 0
 
 
-def construct_data(detected_path,events_path):
+def rf_construct_data(res_pathlist,events_path='merge_events.xlsx'):
     '''
     :param detected_path: myres/下面的经过异常检测的文件夹路径
     :param events_path: 日志异常的excel路径
     :return: 构建带label的整个数据集
     '''
-    detected_anomalys = concat_all_anomaly_csv(detected_path)
-    # no ave time数据,对anomaly_score做mean
-    # detected_anomalys = detected_anomalys.groupby('timestamp').mean().reset_index()
+    detected_anomalys = concat_all_anomaly_csv(res_pathlist)
     detected_anomalys['timestamp'] = detected_anomalys['timestamp'].apply(lambda x: time.mktime(time.strptime(x, '%Y-%m-%d %H:%M:%S')))
-    events = pd.read_excel(events_path)
-    events[u'首次发生时间'] = events[u'首次发生时间'].apply(lambda x: time.mktime(time.strptime(x, '%Y-%m-%d %H:%M:%S')))
-
+    events = evaluate.get_events(events_path)
+    print '异常事件: ',events.shape
     # 当前时间后续ｎ分钟内出现日志异常，并且anomaly_score其中有一个>0.5, 即label=1
     detected_anomalys['label'] = detected_anomalys.apply(lambda row: log_label(row, events),axis=1)
+    '''
+    # 构建与events一一对应的label=1
+    events.rename(columns={u'首次发生时间':'timestamp',u'优先级':'label'},inplace=True)
+    print events.columns
+    events[u'timestamp'] = events[u'timestamp'].apply(lambda x:x.replace(second=0))
+    events[u'label'] = 1
+    events = events[['timestamp','label']]
+    print events.shape
+    detected_anomalys['timestamp'] = pd.to_datetime(detected_anomalys['timestamp'],unit='s')
+    detected_anomalys = pd.merge(detected_anomalys,events,on='timestamp',how='left')
+    detected_anomalys['label'].fillna(0,inplace=True)
+    detected_anomalys['label'] = detected_anomalys['label'].astype(np.int)
+    '''
     return detected_anomalys
 
+def get_res_pathlist(dir='../results/myres/'):
+    '''
+    :param dir: '../results/myres/'
+    :return: 返回es_nodes3_52目录里的所有检测结果csv文件
+    '''
+    pathlist = []
+    for detec_dir in os.listdir(dir):
+        for data_path in os.listdir(dir + detec_dir):
+            if data_path == 'es_nodes3_52':
+                for res in os.listdir(dir + detec_dir + '/es_nodes3_52/'):
+                    pathlist.append(dir + detec_dir + '/es_nodes3_52/' + res)
+    return pathlist
 
-def main():
-    detected_path = '../results/myres/numenta/es_nodes3_9ips/'
-    events_path = 'merge_events.xlsx'
-    anomalys = construct_data(detected_path,events_path)
+
+def rf_model():
+    res_pathlist = get_res_pathlist()
+    anomalys = rf_construct_data(res_pathlist)
+    anomalys['timestamp'] = pd.to_datetime(anomalys['timestamp'],unit='s')
+    anomalys['timestamp'] = anomalys['timestamp'].dt.tz_localize('UTC').dt.tz_convert('Asia/Shanghai')
+    anomalys.drop('timestamp',inplace=True,axis=1)
+    anomalys_label = anomalys.pop('label')
+    X_train, X_test, Y_train, Y_test = train_test_split(anomalys, anomalys_label, test_size=0.2)
+    print 'Xtrain,Xtest,Ytrain,Ytest: ',X_train.shape,X_test.shape,Y_train.shape,Y_test.shape
+    # rf model
+    rf = RandomForestClassifier(oob_score=True, n_estimators=100, max_features=6)
+    rf.fit(X_train, Y_train)
+    # y_train_preprobs = rf.predict_proba(Y_train)[:,1]
+    y_test_pre = rf.predict(X_test)
+    y_test_preprobs = rf.predict_proba(X_test)[:, 1]
+    # auc_train = roc_auc_score(Y_train, y_train_preprobs)
+    auc_test = metrics.roc_auc_score(Y_test, y_test_preprobs)
+    # print "y test prediction:\n", y_test_pre
+    print "test auc:\n", auc_test
+    print "混淆矩阵:\n", metrics.confusion_matrix(Y_test, y_test_pre, labels=[0, 1])
+    print "综合报告:\n", metrics.classification_report(Y_test, y_test_pre)
+
+def rf_kf_model():
+    res_pathlist = get_res_pathlist()
+    anomalys = rf_construct_data(res_pathlist)
+    anomalys['timestamp'] = pd.to_datetime(anomalys['timestamp'],unit='s')
+    anomalys['timestamp'] = anomalys['timestamp'].dt.tz_localize('UTC').dt.tz_convert('Asia/Shanghai')
+    anomalys.drop('timestamp',inplace=True,axis=1)
     anomalys_label = anomalys.pop('label')
 
-    X_train,X_test,Y_train,Y_test = train_test_split(anomalys,anomalys_label,test_size=0.3)
 
-    # lr model
-    lr = LogisticRegression()
-    lr.fit(X_train,Y_train)
-    y_train_pre = lr.predict_proba(X_train)[:,1]
-    y_test_pre = lr.predict_proba(X_test)[:,1]
-    y_test_pre_01 = lr.predict(X_test)
+    scorings = ['precision_macro','recall_macro']
+    rf = RandomForestClassifier(oob_score=True, n_estimators=100, max_features='auto')
+    score_res = cross_validate(rf,anomalys,anomalys_label,cv=5,scoring=scorings)
+    print 'cross res:\n',score_res
+    '''
+    kf = StratifiedKFold(n_splits=3,shuffle=False)
+    auc_list = []
+    for train_index,test_index in kf.split(anomalys,anomalys_label):
+        X_train,X_test = anomalys.iloc[train_index,:],anomalys.iloc[test_index,:]
+        Y_train,Y_test = anomalys_label[train_index],anomalys_label[test_index]
 
-    auc_train = roc_auc_score(Y_train,y_train_pre)
-    auc_test = roc_auc_score(Y_test,y_test_pre)
-    print "y test prediction:\n",y_test_pre
-    print "train auc,test auc:\n",auc_train,auc_test
-    print "混淆矩阵:\n",confusion_matrix(Y_test,y_test_pre_01)
-    print "综合报告:\n",classification_report(Y_test,y_test_pre_01)
+        # rf model
+        rf = RandomForestClassifier(oob_score=True,n_estimators=100,max_features=5)
+        rf.fit(X_train,Y_train)
 
+        #y_train_preprobs = rf.predict_proba(Y_train)[:,1]
+        y_test_pre = rf.predict(X_test)
+        y_test_preprobs = rf.predict_proba(X_test)[:,1]
+
+        #auc_train = roc_auc_score(Y_train, y_train_preprobs)
+        auc_test = metrics.roc_auc_score(Y_test, y_test_preprobs)
+        auc_list.append(auc_test)
+
+        #print "y test prediction:\n", y_test_pre
+        print "test auc:\n", auc_test
+        print "混淆矩阵:\n", metrics.confusion_matrix(Y_test, y_test_pre,labels=[0,1])
+        print "综合报告:\n", metrics.classification_report(Y_test, y_test_pre)
+    print 'auc,recall mean: ',np.mean(auc_list)
+    '''
+
+def main():
+    rf_kf_model()
 
 
 if __name__ == '__main__':

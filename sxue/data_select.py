@@ -15,8 +15,8 @@ def single_sequence(data,cols,save_path,ip='noip'):
         # get that col and timestamp
         data_col = data[['timestamp',cols[i]]]
         data_col.rename(columns={cols[i]: 'value'}, inplace=True)
-        if len(list(set(data_col['value'].values.tolist()))) < 5:
-            continue
+        #if len(list(set(data_col['value'].values.tolist()))) < 5:
+        #    continue
         data_col.dropna(inplace=True)
         data_col = data_col.groupby('timestamp').mean().reset_index()
         data_col.to_csv(save_path+ip+'_'+'2_'+str(i+1)+cols[i]+'.csv',index=0)
@@ -48,13 +48,11 @@ def main():
     select_ip = True
     #nodes_host_ip = ['10.33.208.35', '10.33.208.52', '10.33.208.43', '10.33.208.37', '10.33.208.36', '10.33.208.44',
     #                 '10.33.208.53', '10.33.208.51', '10.33.208.45']
-    nodes_host_ip = ['10.33.208.66']
-    single_data_path = '../data/es_nodes3_66/'
-    cols = ['nodes_os_cpu_load_average_1m',
-            'nodes_os_cpu_percent',
-            'nodes_process_cpu_percent']
-    #'nodes_fs_total_available_in_b',
-    #'nodes_jvm_mem_heap_used_per',
+    nodes_host_ip = ['10.33.208.52']
+    single_data_path = '../data/es_nodes3_52/'
+    cols = ['nodes_fs_total_available_in_b',
+            'nodes_jvm_mem_heap_used_per',
+            'nodes_os_cpu_load_average_1m']
 
     # read data and preprocess
     data = pd.read_csv(data_csv_path)
