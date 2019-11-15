@@ -6,14 +6,28 @@ import os
 from sklearn.model_selection import train_test_split,cross_validate,StratifiedKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn import svm
 from sklearn import metrics
 from matplotlib import pyplot as plt
 import evaluate
 
-def res_paths(path):
+def get_res_paths(path):
     pathlist = []
     for item in os.listdir(path):
         pathlist.append(path+item)
+    return pathlist
+
+def get_res_pathlist(ip_dir,dir='../results/myres/'):
+    '''
+    :param dir: '../results/myres/'
+    :return: 返回es_nodes3_52 ip_dir目录里的所有检测结果csv文件
+    '''
+    pathlist = []
+    for detec_dir in os.listdir(dir):
+        for data_path in os.listdir(dir + detec_dir):
+            if data_path == ip_dir:
+                for res in os.listdir(dir + detec_dir + '/' + ip_dir  +'/'):
+                    pathlist.append(dir + detec_dir + '/' + ip_dir  +'/' + res)
     return pathlist
 
 def concat_all_anomaly_csv(pathlist):
@@ -30,7 +44,6 @@ def concat_all_anomaly_csv(pathlist):
         else:
             data.drop(['value','label'],axis=1 ,inplace=True)
         data = data.rename(columns = {'anomaly_score':'anomalyscore_'+path.split('/')[5].rstrip('.csv')})
-        print data.columns
         data = data.set_index(['timestamp'])
         res_datas.append(data)
 
@@ -61,7 +74,7 @@ def log_label(row,events):
     if np.isnan(interval.min()):
         #print 'interval.min: ',interval.min()
         return 0
-    elif interval.min() > 1800:#30min-1800
+    elif interval.min() > evaluate.TIME_INTERVAL:#30min-1800
         return 0
     else:
         return 1
@@ -100,38 +113,70 @@ def rf_construct_data(res_pathlist,events_path='merge_events.xlsx'):
     '''
     return detected_anomalys
 
-def get_res_pathlist(dir='../results/myres/'):
-    '''
-    :param dir: '../results/myres/'
-    :return: 返回es_nodes3_52目录里的所有检测结果csv文件
-    '''
-    pathlist = []
-    for detec_dir in os.listdir(dir):
-        for data_path in os.listdir(dir + detec_dir):
-            if data_path == 'es_nodes3_52':
-                for res in os.listdir(dir + detec_dir + '/es_nodes3_52/'):
-                    pathlist.append(dir + detec_dir + '/es_nodes3_52/' + res)
-    return pathlist
 
-
-def rf_model():
-    res_pathlist = get_res_pathlist()
+def load_dataset():
+    #res_pathlist = get_res_paths('../results/myres/numenta/es_nodes3_9ips/')
+    res_pathlist = get_res_pathlist(ip_dir=evaluate.IP_DIR)
     anomalys = rf_construct_data(res_pathlist)
+    #print 'anomalys columns name: ',anomalys.columns
     anomalys['timestamp'] = pd.to_datetime(anomalys['timestamp'],unit='s')
     anomalys['timestamp'] = anomalys['timestamp'].dt.tz_localize('UTC').dt.tz_convert('Asia/Shanghai')
-    anomalys.drop('timestamp',inplace=True,axis=1)
+
+    print 'anomalys shape and 0/1\n',anomalys.shape[0],anomalys['label'].value_counts()
+    anomalys_timestamp = anomalys.pop('timestamp')
+    #anomalys_label = anomalys.pop('label')
+    return anomalys
+
+def rf_model(anomalys):
     anomalys_label = anomalys.pop('label')
-    X_train, X_test, Y_train, Y_test = train_test_split(anomalys, anomalys_label, test_size=0.2)
+    auc_list = []
+    for k in range(5):
+        X_train, X_test, Y_train, Y_test = train_test_split(anomalys, anomalys_label, test_size=0.3)
+        print 'Xtrain,Xtest,Ytrain,Ytest: ',X_train.shape,X_test.shape,Y_train.shape,Y_test.shape
+        # rf model
+        model = RandomForestClassifier(oob_score=True, n_estimators=100, max_features=6)
+        model.fit(X_train, Y_train)
+        #model = LogisticRegression()
+        #model.fit(X_train,Y_train)
+        #model = svm.SVC()
+        #model.fit(X_train,Y_train)
+
+        # y_train_preprobs = rf.predict_proba(Y_train)[:,1]
+        y_test_pre = model.predict(X_test)
+        y_test_preprobs = model.predict_proba(X_test)[:, 1]
+        # auc_train = roc_auc_score(Y_train, y_train_preprobs)
+        auc_test = metrics.roc_auc_score(Y_test, y_test_preprobs)
+        auc_list.append(auc_test)
+
+        # print "y test prediction:\n", y_test_pre
+        print "test auc:\n", auc_test
+        print "混淆矩阵:\n", metrics.confusion_matrix(Y_test, y_test_pre, labels=[0, 1])
+        print "综合报告:\n", metrics.classification_report(Y_test, y_test_pre)
+    print 'auc_avg:',np.mean(auc_list)
+
+def rf_model1(anomalys): #
+    dataset_len = anomalys.shape[0]
+    ratio = 0.8
+    train_len = int(ratio*dataset_len)
+    X_train = anomalys.iloc[:train_len,:]
+    Y_train = X_train.pop('label')
+    X_test = anomalys.iloc[train_len:,:]
+    Y_test = X_test.pop('label')
+    #X_train, X_test, Y_train, Y_test = train_test_split(anomalys, anomalys_label, test_size=0.3)
     print 'Xtrain,Xtest,Ytrain,Ytest: ',X_train.shape,X_test.shape,Y_train.shape,Y_test.shape
     # rf model
-    rf = RandomForestClassifier(oob_score=True, n_estimators=100, max_features=6)
-    rf.fit(X_train, Y_train)
+    model = RandomForestClassifier(oob_score=True, n_estimators=100, max_features='sqrt')
+    model.fit(X_train, Y_train)
+    #model = LogisticRegression()
+    #model.fit(X_train,Y_train)
+    #model = svm.SVC()
+    #model.fit(X_train,Y_train)
+
     # y_train_preprobs = rf.predict_proba(Y_train)[:,1]
-    y_test_pre = rf.predict(X_test)
-    y_test_preprobs = rf.predict_proba(X_test)[:, 1]
+    y_test_pre = model.predict(X_test)
+    y_test_preprobs = model.predict_proba(X_test)[:, 1]
     # auc_train = roc_auc_score(Y_train, y_train_preprobs)
     auc_test = metrics.roc_auc_score(Y_test, y_test_preprobs)
-    # print "y test prediction:\n", y_test_pre
     print "test auc:\n", auc_test
     print "混淆矩阵:\n", metrics.confusion_matrix(Y_test, y_test_pre, labels=[0, 1])
     print "综合报告:\n", metrics.classification_report(Y_test, y_test_pre)
@@ -175,8 +220,22 @@ def rf_kf_model():
     print 'auc,recall mean: ',np.mean(auc_list)
     '''
 
+def draw_anomalys():
+    res_pathlist = get_res_pathlist(ip_dir=evaluate.IP_DIR)
+    anomalys = rf_construct_data(res_pathlist)
+    #print 'anomalys columns name: ',anomalys.columns
+    anomalys['timestamp'] = pd.to_datetime(anomalys['timestamp'],unit='s')
+    anomalys['timestamp'] = anomalys['timestamp'].dt.tz_localize('UTC').dt.tz_convert('Asia/Shanghai')
+
+    plt.figure(1, figsize=(20, 8))
+    plt.plot(anomalys['timestamp'], anomalys['anomalyscore_relativeEntropy_10.33.208.52_2_4nodes_os_cpu_percent'], label='detected')
+    plt.plot(anomalys['timestamp'], anomalys['label'], label='label')
+    plt.legend(loc='upper right')
+    plt.show()
+
 def main():
-    rf_kf_model()
+    anomalys = load_dataset()
+    rf_model1(anomalys)
 
 
 if __name__ == '__main__':

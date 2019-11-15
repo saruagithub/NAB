@@ -4,10 +4,13 @@ import numpy as np
 import predict
 import time
 
+# 简单阈值投票判断anomaly
 ANOMALY_SCORE = 0.95
-TIME_INTERVAL = 300
-EVENT_IP = '10.33.208.52'
 SCORE_THRESHOLD_COUNT = 1
+
+TIME_INTERVAL = 300
+EVENT_IP = '10.33.208.36'
+IP_DIR = 'es_nodes3_36'
 
 def get_events(events_path):
     events = pd.read_excel(events_path)
@@ -19,7 +22,8 @@ def get_events(events_path):
     return events
 
 def get_all_res(res_dir_path):
-    anomalys = predict.concat_all_anomaly_csv(res_dir_path)
+    pathlist = predict.get_res_paths(res_dir_path)
+    anomalys = predict.concat_all_anomaly_csv(pathlist)
     anomalys['timestamp'] = anomalys['timestamp'].apply(lambda x: time.mktime(time.strptime(x, '%Y-%m-%d %H:%M:%S')))
     anomalys['count'] = anomalys.apply(lambda row: sum(row > ANOMALY_SCORE) - 1, axis=1)  # score超过ANOMALY_SCORE的个数
     anomalys['label'] = anomalys['count'].apply(lambda x:1 if x >= SCORE_THRESHOLD_COUNT else 0)
@@ -60,7 +64,7 @@ def is_FP(row,events):
 
 def main():
     events = get_events('merge_events.xlsx')
-    anomalys = get_all_res('../results/myres/windowedGaussian/es_nodes3_66/')
+    anomalys = get_all_res('../results/myres/windowedGaussian/es_nodes3_36/')
     anomalys_1 = anomalys[anomalys['label']==1]
     print '检测的异常,　真实异常: ',anomalys_1.shape[0],events.shape[0]
 

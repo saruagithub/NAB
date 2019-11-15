@@ -48,11 +48,13 @@ def main():
     select_ip = True
     #nodes_host_ip = ['10.33.208.35', '10.33.208.52', '10.33.208.43', '10.33.208.37', '10.33.208.36', '10.33.208.44',
     #                 '10.33.208.53', '10.33.208.51', '10.33.208.45']
-    nodes_host_ip = ['10.33.208.52']
-    single_data_path = '../data/es_nodes3_52/'
+    nodes_host_ip = ['10.33.208.36']
+    single_data_path = '../data/es_nodes3_36/'
     cols = ['nodes_fs_total_available_in_b',
-            'nodes_jvm_mem_heap_used_per',
-            'nodes_os_cpu_load_average_1m']
+           'nodes_jvm_mem_heap_used_per',
+            'nodes_os_cpu_load_average_1m',
+            'nodes_os_cpu_percent',
+            'nodes_process_cpu_percent']
 
     # read data and preprocess
     data = pd.read_csv(data_csv_path)

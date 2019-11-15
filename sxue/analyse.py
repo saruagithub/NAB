@@ -40,7 +40,7 @@ def plot_value(res):
     :return: 画出原始数据的value值变化
     '''
     plt.figure(1, figsize=(20, 8))
-    plt.plot(res['timestamp'], res['value'], label='time series value')
+    plt.plot(res['timestamp'], res['value'], label='nodes memory used per minute')
     plt.legend(loc='upper right')
     plt.show()
 
@@ -142,9 +142,10 @@ def contrast(res_path):
 
 
 def main():
-    path = '../results/myres/bayesChangePt/es_nodes3_52/bayesChangePt_10.33.208.52_2_2nodes_jvm_mem_heap_used_per.csv'
+    path = '../results/myres/numenta/es_nodes3_66/numenta_10.33.208.66_2_2nodes_jvm_mem_heap_used_per.csv'
     res,res_ip = res_preprocess(path)
-    plot_value_score_events(res,res_ip)
+    #plot_value_score_events(res,res_ip)
+    plot_value(res)
     #plot_value_perweek(res)
     #plot_value_score(res)
     #plot_score_events(res)
